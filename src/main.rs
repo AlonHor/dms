@@ -1,22 +1,65 @@
-use crate::document::DocumentTrait;
+use crate::document::{Document, DocumentTrait};
+use actix_web::{get, post, web, App, HttpServer, Responder};
+use std::collections::HashMap;
+use uuid::Uuid;
 
 mod document;
+mod tests;
 
-fn main() {
-    let mut doc = document::Document::new("My document", "Hey!");
+struct DocumentDb {
+    docs: std::sync::Mutex<HashMap<Uuid, Document>>,
+}
 
-    doc.set_name("Renamed document").unwrap();
-    doc.set_content("Hello!").unwrap();
-
-    println!("id: {}", doc.id());
-    println!("creation date: {}", doc.creation_date());
-    println!("name: {}", doc.name().unwrap());
-    println!("content: {}", doc.content().unwrap());
-    println!("last modified: {}", doc.last_modified());
-
-    println!("---- VERSIONS ----");
-
-    for version in doc.history().unwrap() {
-        println!(" - {}", version);
+impl DocumentDb {
+    fn new() -> Self {
+        Self {
+            docs: HashMap::new().into(),
+        }
     }
+
+    async fn find_doc(&self, uuid_str: &str) -> Result<Document, &'static str> {
+        let parsed = Uuid::parse_str(uuid_str).map_err(|_| "Invalid UUID")?;
+        let docs = self.docs.lock().unwrap();
+        docs.get(&parsed).cloned().ok_or("Not found")
+    }
+
+    async fn add_doc(&self, document: Document) {
+        let mut docs = self.docs.lock().unwrap();
+        docs.insert(document.id(), document);
+    }
+}
+
+#[get("/doc/{uuid}")]
+async fn get_doc(server: web::Data<DocumentDb>, uuid: web::Path<String>) -> impl Responder {
+    match server.find_doc(&uuid).await {
+        Ok(doc) => format!(
+            "Document content: {}",
+            doc.content()
+                .expect("Error while obtaining document content.")
+        ),
+        Err(e) => format!("Error: {}", e),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct CreateDocumentRequest {
+    name: String,
+    content: String,
+}
+
+#[post("/doc")]
+async fn create_doc(server: web::Data<DocumentDb>, body: web::Json<CreateDocumentRequest>) -> impl Responder {
+    let doc = Document::new(&body.name, &body.content);
+    let doc_id = doc.id();
+    server.add_doc(doc).await;
+    format!("Document created with ID: {}", doc_id)
+}
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    let data = web::Data::new(DocumentDb::new());
+    HttpServer::new(move || App::new().app_data(data.clone()).service(get_doc).service(create_doc))
+        .bind(("0.0.0.0", 8080))?
+        .run()
+        .await
 }
