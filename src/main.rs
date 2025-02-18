@@ -5,14 +5,18 @@ mod document;
 fn main() {
     let mut doc = document::Document::new("My document", "Hey!");
 
-    doc.set_name("Renamed document");
-    doc.set_new_content("Hello!").unwrap();
+    doc.set_name("Renamed document").unwrap();
+    doc.set_content("Hello!").unwrap();
 
-    println!("{}", doc.id);
-    println!("{}", doc.creation_date);
-    println!("{}", doc.read_name());
-    println!("{}", doc.read_content());
-    for version in doc.read_history() {
+    println!("id: {}", doc.id());
+    println!("creation date: {}", doc.creation_date());
+    println!("name: {}", doc.name().unwrap());
+    println!("content: {}", doc.content().unwrap());
+    println!("last modified: {}", doc.last_modified());
+
+    println!("---- VERSIONS ----");
+
+    for version in doc.history().unwrap() {
         println!(" - {}", version);
     }
 }
