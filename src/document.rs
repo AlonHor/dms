@@ -1,5 +1,7 @@
 ﻿use std::sync::{Arc, Mutex};
 
+const FAILED_TO_ACQUIRE_LOCK: &str = "Failed to acquire lock.";
+
 pub trait DocumentTrait {
     fn set_new_content<'a>(&mut self, new_content: &'a str) -> Result<&'a str, &'static str>;
     fn read_content(&self) -> Arc<str>;
@@ -29,7 +31,7 @@ impl Document {
         };
 
         let history_clone = Arc::clone(&instance.history);
-        let mut history_lock = history_clone.lock().expect("Failed to acquire lock.");
+        let mut history_lock = history_clone.lock().expect(FAILED_TO_ACQUIRE_LOCK);
         history_lock.push(Arc::from(content));
 
         instance
@@ -43,7 +45,7 @@ impl DocumentTrait for Document {
             Ok(mut content_lock) => {
                 let history_clone = Arc::clone(&self.history);
 
-                let mut history_lock = history_clone.lock().expect("Failed to acquire lock.");
+                let mut history_lock = history_clone.lock().expect(FAILED_TO_ACQUIRE_LOCK);
                 history_lock.push(Arc::from(new_content));
 
                 self.last_modified = chrono::Utc::now().naive_utc();
@@ -55,14 +57,14 @@ impl DocumentTrait for Document {
     }
 
     fn read_content(&self) -> Arc<str> {
-        let content_lock = self.content.lock().expect("Failed to acquire lock.");
+        let content_lock = self.content.lock().expect(FAILED_TO_ACQUIRE_LOCK);
         let content = Arc::clone(&content_lock);
 
         content
     }
 
     fn read_name(&self) -> Arc<str> {
-        let name_lock = self.name.lock().expect("Failed to acquire lock.");
+        let name_lock = self.name.lock().expect(FAILED_TO_ACQUIRE_LOCK);
         let name = name_lock.clone();
 
         name
@@ -71,7 +73,7 @@ impl DocumentTrait for Document {
     fn read_history(&self) -> Vec<Arc<str>> {
         let mut history = Vec::new();
 
-        let history_lock = self.history.lock().expect("Failed to acquire lock.");
+        let history_lock = self.history.lock().expect(FAILED_TO_ACQUIRE_LOCK);
         let history_vec = history_lock.clone();
 
         for version in history_vec {
@@ -83,7 +85,7 @@ impl DocumentTrait for Document {
 
     fn set_name(&mut self, new_name: &str) {
         let name_clone = Arc::clone(&self.name);
-        let mut name_lock = name_clone.lock().expect("Failed to acquire lock.");
+        let mut name_lock = name_clone.lock().expect(FAILED_TO_ACQUIRE_LOCK);
         *name_lock = Arc::from(new_name);
     }
 }
