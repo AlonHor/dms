@@ -22,7 +22,7 @@ mod tests {
     #[test]
     fn test_set_name() {
         let mut doc = Document::new("Doc", "Content");
-        doc.set_name("NewName").unwrap();
+        doc.set_name("NewName");
         assert_eq!(doc.name().unwrap().as_ref(), "NewName");
     }
     

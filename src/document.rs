@@ -14,11 +14,8 @@ pub trait DocumentTrait {
     fn content(&self) -> Result<Arc<str>, DocumentError>;
     fn name(&self) -> Result<Arc<str>, DocumentError>;
     fn history(&self) -> Result<Vec<Arc<str>>, DocumentError>;
-    fn set_name(&mut self, new_name: &str) -> Result<(), DocumentError>;
+    fn set_name(&mut self, new_name: &str);
 }
-
-type SharedString = Arc<Mutex<Arc<str>>>;
-type SharedHistory = Arc<Mutex<Vec<Arc<str>>>>;
 
 #[derive(Clone)]
 pub struct DocumentMetadata {
@@ -48,24 +45,32 @@ impl DocumentMetadata {
     }
 }
 
-#[derive(Clone)]
+impl Default for DocumentMetadata {
+    fn default() -> Self {
+        let now = Utc::now();
+        Self {
+            creation_date: now,
+            last_modified: now,
+        }
+    }
+}
+
+#[derive(Clone, Default)]
 pub struct Document {
     id: Uuid,
-    name: SharedString,
-    content: SharedString,
-    history: SharedHistory,
+    name: Arc<Mutex<String>>,
+    content: Arc<Mutex<String>>,
+    history: Arc<Mutex<Vec<String>>>,
     metadata: DocumentMetadata,
 }
 
 impl Document {
     pub fn new(name: &str, content: &str) -> Self {
-        let content_arc = Arc::from(content);
-
         let instance = Self {
             id: Uuid::new_v4(),
-            name: Arc::new(Mutex::new(Arc::from(name))),
-            content: Arc::new(Mutex::new(Arc::clone(&content_arc))),
-            history: Arc::new(Mutex::new(vec![content_arc])),
+            name: Arc::new(Mutex::new(name.to_owned())),
+            content: Arc::new(Mutex::new(content.to_owned())),
+            history: Arc::new(Mutex::new(vec![content.to_owned()])),
             metadata: DocumentMetadata::new(),
         };
 
@@ -82,9 +87,7 @@ impl Document {
 }
 
 impl DocumentTrait for Document {
-    fn set_content(&mut self, new_content: &str) -> Result<(), DocumentError> {
-        let content_arc = Arc::from(new_content);
-
+    fn set_content(&mut self, content: &str) -> Result<(), DocumentError> {
         let mut content_guard = self
             .content
             .lock()
@@ -94,8 +97,8 @@ impl DocumentTrait for Document {
             .lock()
             .map_err(|e| DocumentError::LockError(e.to_string()))?;
 
-        history_guard.push(Arc::clone(&content_arc));
-        *content_guard = content_arc;
+        history_guard.push(content.to_owned());
+        *content_guard = content.to_owned();
         self.metadata.update_last_modified();
 
         Ok(())
@@ -106,7 +109,7 @@ impl DocumentTrait for Document {
             .content
             .lock()
             .map_err(|e| DocumentError::LockError(e.to_string()))?;
-        Ok(Arc::clone(&content_guard))
+        Ok(Arc::<str>::from(content_guard.clone()))
     }
 
     fn name(&self) -> Result<Arc<str>, DocumentError> {
@@ -114,7 +117,7 @@ impl DocumentTrait for Document {
             .name
             .lock()
             .map_err(|e| DocumentError::LockError(e.to_string()))?;
-        Ok(Arc::clone(&name_guard))
+        Ok(Arc::<str>::from(name_guard.clone()))
     }
 
     fn history(&self) -> Result<Vec<Arc<str>>, DocumentError> {
@@ -122,15 +125,14 @@ impl DocumentTrait for Document {
             .history
             .lock()
             .map_err(|e| DocumentError::LockError(e.to_string()))?;
-        Ok(history_guard.clone())
+        Ok(history_guard.iter().map(|v| Arc::<str>::from(v.as_str())).collect())
     }
 
-    fn set_name(&mut self, new_name: &str) -> Result<(), DocumentError> {
+    fn set_name(&mut self, new_name: &str) {
         let mut name_guard = self
             .name
             .lock()
-            .map_err(|e| DocumentError::LockError(e.to_string()))?;
-        *name_guard = Arc::from(new_name);
-        Ok(())
+            .map_err(|e| DocumentError::LockError(e.to_string())).unwrap();
+        *name_guard = new_name.to_owned();
     }
 }

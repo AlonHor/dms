@@ -1,13 +1,14 @@
 use crate::document::{Document, DocumentTrait};
 use actix_web::{get, post, web, App, HttpServer, Responder};
 use std::collections::HashMap;
+use std::sync::Mutex;
 use uuid::Uuid;
 
 mod document;
 mod tests;
 
 struct DocumentDb {
-    docs: std::sync::Mutex<HashMap<Uuid, Document>>,
+    docs: Mutex<HashMap<Uuid, Document>>,
 }
 
 impl DocumentDb {
@@ -48,18 +49,47 @@ struct CreateDocumentRequest {
 }
 
 #[post("/doc")]
-async fn create_doc(server: web::Data<DocumentDb>, body: web::Json<CreateDocumentRequest>) -> impl Responder {
+async fn create_doc(
+    server: web::Data<DocumentDb>,
+    body: web::Json<CreateDocumentRequest>,
+) -> impl Responder {
     let doc = Document::new(&body.name, &body.content);
     let doc_id = doc.id();
     server.add_doc(doc).await;
     format!("Document created with ID: {}", doc_id)
 }
 
+#[derive(serde::Deserialize)]
+struct EditDocumentRequest {
+    content: String,
+}
+
+#[post("/doc/{uuid}")]
+async fn edit_doc(
+    server: web::Data<DocumentDb>,
+    uuid: web::Path<String>,
+    body: web::Json<EditDocumentRequest>,
+) -> impl Responder {
+    match server.find_doc(&uuid).await {
+        Ok(mut doc) => match doc.set_content(body.content.as_ref()) {
+            Ok(_) => "Content changed".to_owned(),
+            Err(_) => "Couldn't change content, try again later".to_owned(),
+        },
+        Err(e) => format!("Error: {}", e),
+    }
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let data = web::Data::new(DocumentDb::new());
-    HttpServer::new(move || App::new().app_data(data.clone()).service(get_doc).service(create_doc))
-        .bind(("0.0.0.0", 8080))?
-        .run()
-        .await
+    HttpServer::new(move || {
+        App::new()
+            .app_data(data.clone())
+            .service(get_doc)
+            .service(create_doc)
+            .service(edit_doc)
+    })
+    .bind(("0.0.0.0", 8080))?
+    .run()
+    .await
 }
