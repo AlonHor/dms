@@ -1,5 +1,5 @@
 ﻿#[cfg(test)]
-mod tests {
+mod document_tests {
     use crate::{document::Document, document::DocumentTrait};
 
     #[test]

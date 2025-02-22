@@ -1,7 +1,7 @@
 use crate::document::{Document, DocumentTrait};
-use actix_web::{get, post, web, App, HttpServer, Responder};
+use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 use std::collections::HashMap;
-use std::sync::{Mutex};
+use std::sync::Mutex;
 use uuid::Uuid;
 
 mod document;
@@ -35,12 +35,11 @@ impl DocumentDb {
 async fn get_doc(server: web::Data<DocumentDb>, uuid: web::Path<String>) -> impl Responder {
     match server.find_doc(&uuid).await {
         Ok(doc) => match doc.content() {
-            Ok(content) => {
-                format!("Document content: {}", content)
-            }
-            Err(e) => format!("Error: {}", e),
+            Ok(content) => HttpResponse::Ok().json(serde_json::json!({ "content": *content })),
+            Err(e) => HttpResponse::InternalServerError()
+                .json(serde_json::json!({ "error": e.to_string() })),
         },
-        Err(e) => format!("Error: {}", e),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({ "error": e })),
     }
 }
 
@@ -58,8 +57,8 @@ async fn create_doc(
     let doc = Document::new(&body.name, &body.content);
     let doc_id = doc.id();
     match server.add_doc(doc).await {
-        Ok(_) => format!("Document created with ID: {}", doc_id),
-        Err(e) => format!("Error: {}", e),
+        Ok(_) => HttpResponse::Created().json(serde_json::json!({ "id": String::from(doc_id) })),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({ "error": e })),
     }
 }
 
@@ -76,10 +75,11 @@ async fn edit_doc(
 ) -> impl Responder {
     match server.find_doc(&uuid).await {
         Ok(mut doc) => match doc.set_content(body.content.as_ref()) {
-            Ok(_) => "Content changed".to_owned(),
-            Err(e) => format!("Error: {}", e),
+            Ok(_) => HttpResponse::Ok().json(serde_json::json!({ "content": body.content })),
+            Err(e) => HttpResponse::InternalServerError()
+                .json(serde_json::json!({ "error": e.to_string() })),
         },
-        Err(e) => format!("Error: {}", e),
+        Err(e) => HttpResponse::BadRequest().json(serde_json::json!({ "error": e })),
     }
 }
 
