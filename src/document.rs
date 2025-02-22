@@ -42,7 +42,7 @@ impl DocumentMetadata {
             .lock()
             .map_err(|e| DocumentError::LockError(e.to_string()))?;
 
-        Ok(last_modified_guard.clone())
+        Ok(*last_modified_guard)
     }
 
     fn update_last_modified(&mut self) -> Result<(), DocumentError> {
@@ -122,9 +122,8 @@ impl DocumentTrait for Document {
 
         history_guard.push(content.to_owned());
         *content_guard = content.to_owned();
-        self.metadata.update_last_modified();
 
-        Ok(())
+        self.metadata.update_last_modified()
     }
 
     fn content(&self) -> Result<Arc<str>, DocumentError> {

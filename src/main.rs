@@ -1,7 +1,7 @@
 use crate::document::{Document, DocumentTrait};
 use actix_web::{get, post, web, App, HttpServer, Responder};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Mutex};
 use uuid::Uuid;
 
 mod document;
@@ -34,11 +34,12 @@ impl DocumentDb {
 #[get("/doc/{uuid}")]
 async fn get_doc(server: web::Data<DocumentDb>, uuid: web::Path<String>) -> impl Responder {
     match server.find_doc(&uuid).await {
-        Ok(doc) => format!(
-            "Document content: {}",
-            doc.content()
-                .expect("Error while obtaining document content.")
-        ),
+        Ok(doc) => match doc.content() {
+            Ok(content) => {
+                format!("Document content: {}", content)
+            }
+            Err(e) => format!("Error: {}", e),
+        },
         Err(e) => format!("Error: {}", e),
     }
 }
@@ -58,7 +59,7 @@ async fn create_doc(
     let doc_id = doc.id();
     match server.add_doc(doc).await {
         Ok(_) => format!("Document created with ID: {}", doc_id),
-        Err(e) => e.to_owned()
+        Err(e) => format!("Error: {}", e),
     }
 }
 
@@ -76,7 +77,7 @@ async fn edit_doc(
     match server.find_doc(&uuid).await {
         Ok(mut doc) => match doc.set_content(body.content.as_ref()) {
             Ok(_) => "Content changed".to_owned(),
-            Err(_) => "Couldn't change content, try again later".to_owned(),
+            Err(e) => format!("Error: {}", e),
         },
         Err(e) => format!("Error: {}", e),
     }
