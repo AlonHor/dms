@@ -20,13 +20,14 @@ impl DocumentDb {
 
     async fn find_doc(&self, uuid_str: &str) -> Result<Document, &'static str> {
         let parsed = Uuid::parse_str(uuid_str).map_err(|_| "Invalid UUID")?;
-        let docs = self.docs.lock().unwrap();
+        let docs = self.docs.lock().map_err(|_| "Couldn't lock documents")?;
         docs.get(&parsed).cloned().ok_or("Not found")
     }
 
-    async fn add_doc(&self, document: Document) {
-        let mut docs = self.docs.lock().unwrap();
+    async fn add_doc(&self, document: Document) -> Result<(), &'static str> {
+        let mut docs = self.docs.lock().map_err(|_| "Couldn't lock documents")?;
         docs.insert(document.id(), document);
+        Ok(())
     }
 }
 
@@ -55,8 +56,10 @@ async fn create_doc(
 ) -> impl Responder {
     let doc = Document::new(&body.name, &body.content);
     let doc_id = doc.id();
-    server.add_doc(doc).await;
-    format!("Document created with ID: {}", doc_id)
+    match server.add_doc(doc).await {
+        Ok(_) => format!("Document created with ID: {}", doc_id),
+        Err(e) => e.to_owned()
+    }
 }
 
 #[derive(serde::Deserialize)]
