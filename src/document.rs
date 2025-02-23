@@ -9,14 +9,6 @@ pub enum DocumentError {
     LockError(String),
 }
 
-pub trait DocumentTrait {
-    fn set_content(&mut self, new_content: &str) -> Result<(), DocumentError>;
-    fn content(&self) -> Result<Arc<str>, DocumentError>;
-    fn name(&self) -> Result<Arc<str>, DocumentError>;
-    fn history(&self) -> Result<Vec<Arc<str>>, DocumentError>;
-    fn set_name(&mut self, new_name: &str) -> Result<(), DocumentError>;
-}
-
 #[derive(Clone)]
 pub struct DocumentMetadata {
     creation_date: DateTime<Utc>,
@@ -109,8 +101,8 @@ impl Default for Document {
     }
 }
 
-impl DocumentTrait for Document {
-    fn set_content(&mut self, content: &str) -> Result<(), DocumentError> {
+impl Document {
+    pub fn set_content(&mut self, content: &str) -> Result<(), DocumentError> {
         let mut content_guard = self
             .content
             .lock()
@@ -126,37 +118,34 @@ impl DocumentTrait for Document {
         self.metadata.update_last_modified()
     }
 
-    fn content(&self) -> Result<Arc<str>, DocumentError> {
+    pub fn content(&self) -> Result<String, DocumentError> {
         let content_guard = self
             .content
             .lock()
             .map_err(|e| DocumentError::LockError(e.to_string()))?;
 
-        Ok(Arc::<str>::from(content_guard.clone()))
+        Ok(content_guard.clone())
     }
 
-    fn name(&self) -> Result<Arc<str>, DocumentError> {
+    pub fn name(&self) -> Result<String, DocumentError> {
         let name_guard = self
             .name
             .lock()
             .map_err(|e| DocumentError::LockError(e.to_string()))?;
 
-        Ok(Arc::<str>::from(name_guard.clone()))
+        Ok(name_guard.clone())
     }
 
-    fn history(&self) -> Result<Vec<Arc<str>>, DocumentError> {
+    pub fn history(&self) -> Result<Vec<String>, DocumentError> {
         let history_guard = self
             .history
             .lock()
             .map_err(|e| DocumentError::LockError(e.to_string()))?;
 
-        Ok(history_guard
-            .iter()
-            .map(|v| Arc::<str>::from(v.as_str()))
-            .collect())
+        Ok(history_guard.iter().cloned().collect())
     }
 
-    fn set_name(&mut self, new_name: &str) -> Result<(), DocumentError> {
+    pub fn set_name(&mut self, new_name: &str) -> Result<(), DocumentError> {
         let mut name_guard = self
             .name
             .lock()

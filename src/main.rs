@@ -1,5 +1,5 @@
-use crate::document::{Document, DocumentTrait};
-use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
+use crate::document::Document;
+use actix_web::{get, post, web, App, HttpResponse, HttpServer};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use uuid::Uuid;
@@ -31,40 +31,70 @@ impl DocumentDb {
     }
 }
 
+fn get_error_json(error: String) -> serde_json::Value {
+    serde_json::json!({ "error": error })
+}
+
 #[get("/doc/{uuid}")]
-async fn get_doc(server: web::Data<DocumentDb>, uuid: web::Path<String>) -> impl Responder {
+async fn get_doc(server: web::Data<DocumentDb>, uuid: web::Path<String>) -> HttpResponse {
     match server.find_doc(&uuid).await {
-        Ok(doc) => match doc.content() {
-            Ok(content) => HttpResponse::Ok().json(serde_json::json!({ "content": *content })),
-            Err(e) => HttpResponse::InternalServerError()
-                .json(serde_json::json!({ "error": e.to_string() })),
-        },
-        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({ "error": e })),
+        Ok(doc) => {
+            let content = match doc.content() {
+                Ok(c) => c,
+                Err(e) => {
+                    return HttpResponse::InternalServerError().json(get_error_json(e.to_string()))
+                }
+            };
+
+            let name = match doc.name() {
+                Ok(n) => n,
+                Err(e) => {
+                    return HttpResponse::InternalServerError().json(get_error_json(e.to_string()))
+                }
+            };
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "name": name,
+                "content": content,
+            }))
+        }
+        Err(e) => HttpResponse::BadRequest().json(get_error_json(e.to_owned())),
     }
 }
 
 #[derive(serde::Deserialize)]
 struct CreateDocumentRequest {
-    name: String,
-    content: String,
+    name: Option<String>,
+    content: Option<String>,
 }
 
 #[post("/doc")]
 async fn create_doc(
     server: web::Data<DocumentDb>,
     body: web::Json<CreateDocumentRequest>,
-) -> impl Responder {
-    let doc = Document::new(&body.name, &body.content);
+) -> HttpResponse {
+    let content = match &body.content {
+        Some(c) => c,
+        None => &"".to_owned(),
+    };
+
+    let name = match &body.name {
+        Some(n) => n,
+        None => &"Untitled".to_owned(),
+    };
+
+    let doc = Document::new(name, content);
     let doc_id = doc.id();
     match server.add_doc(doc).await {
         Ok(_) => HttpResponse::Created().json(serde_json::json!({ "id": String::from(doc_id) })),
-        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({ "error": e })),
+        Err(e) => HttpResponse::InternalServerError().json(get_error_json(e.to_owned())),
     }
 }
 
 #[derive(serde::Deserialize)]
 struct EditDocumentRequest {
-    content: String,
+    content: Option<String>,
+    name: Option<String>,
 }
 
 #[post("/doc/{uuid}")]
@@ -72,14 +102,38 @@ async fn edit_doc(
     server: web::Data<DocumentDb>,
     uuid: web::Path<String>,
     body: web::Json<EditDocumentRequest>,
-) -> impl Responder {
+) -> HttpResponse {
     match server.find_doc(&uuid).await {
-        Ok(mut doc) => match doc.set_content(body.content.as_ref()) {
-            Ok(_) => HttpResponse::Ok().json(serde_json::json!({ "content": body.content })),
-            Err(e) => HttpResponse::InternalServerError()
-                .json(serde_json::json!({ "error": e.to_string() })),
-        },
-        Err(e) => HttpResponse::BadRequest().json(serde_json::json!({ "error": e })),
+        Ok(mut doc) => {
+            if let Some(c) = &body.content {
+                if let Err(e) = doc.set_content(c) {
+                    return HttpResponse::InternalServerError().json(get_error_json(e.to_string()));
+                }
+            }
+
+            if let Some(n) = &body.name {
+                if let Err(e) = doc.set_name(n) {
+                    return HttpResponse::InternalServerError().json(get_error_json(e.to_string()));
+                }
+            }
+
+            let name = match doc.name() {
+                Ok(n) => n,
+                Err(e) => {
+                    return HttpResponse::InternalServerError().json(get_error_json(e.to_string()));
+                }
+            };
+
+            let content = match doc.content() {
+                Ok(c) => c,
+                Err(e) => {
+                    return HttpResponse::InternalServerError().json(get_error_json(e.to_string()));
+                }
+            };
+
+            HttpResponse::Ok().json(serde_json::json!({ "name": name, "content": content }))
+        }
+        Err(e) => HttpResponse::BadRequest().json(get_error_json(e.to_owned())),
     }
 }
 

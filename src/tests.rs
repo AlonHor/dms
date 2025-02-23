@@ -1,13 +1,13 @@
 ﻿#[cfg(test)]
 mod document_tests {
-    use crate::{document::Document, document::DocumentTrait};
+    use crate::document::Document;
 
     #[test]
     fn test_document_creation() {
         let doc = Document::new("TestDoc", "TestContent");
-        assert_eq!(doc.name().expect("Failed to lock name").as_ref(), "TestDoc");
+        assert_eq!(doc.name().expect("Failed to lock name"), "TestDoc");
         assert_eq!(
-            doc.content().expect("Failed to lock content").as_ref(),
+            doc.content().expect("Failed to lock content"),
             "TestContent"
         );
         assert_eq!(doc.history().expect("Failed to lock history").len(), 1);
@@ -16,11 +16,9 @@ mod document_tests {
     #[test]
     fn test_set_content() {
         let mut doc = Document::new("TestDoc", "TestContent");
-        doc.set_content("NewContent").expect("Failed to lock content");
-        assert_eq!(
-            doc.content().expect("Failed to lock content").as_ref(),
-            "NewContent"
-        );
+        doc.set_content("NewContent")
+            .expect("Failed to lock content");
+        assert_eq!(doc.content().expect("Failed to lock content"), "NewContent");
         assert_eq!(doc.history().expect("Failed to lock history").len(), 2);
     }
 
@@ -28,7 +26,7 @@ mod document_tests {
     fn test_set_name() {
         let mut doc = Document::new("Doc", "Content");
         doc.set_name("NewName").expect("Failed to lock name");
-        assert_eq!(doc.name().expect("Failed to lock name").as_ref(), "NewName");
+        assert_eq!(doc.name().expect("Failed to lock name"), "NewName");
     }
 
     #[test]
@@ -59,8 +57,8 @@ mod document_tests {
     #[test]
     fn test_document_default() {
         let doc = Document::default();
-        assert_eq!(doc.name().expect("Failed to lock name").as_ref(), "");
-        assert_eq!(doc.content().expect("Failed to lock content").as_ref(), "");
+        assert_eq!(doc.name().expect("Failed to lock name"), "");
+        assert_eq!(doc.content().expect("Failed to lock content"), "");
         assert_eq!(doc.history().expect("Failed to lock history").len(), 1);
     }
 
@@ -69,12 +67,12 @@ mod document_tests {
         let original = Document::new("CloneMe", "Content");
         let cloned = original.clone();
         assert_eq!(
-            original.name().expect("Failed to lock name").as_ref(),
-            cloned.name().expect("Failed to lock name").as_ref()
+            original.name().expect("Failed to lock name"),
+            cloned.name().expect("Failed to lock name")
         );
         assert_eq!(
-            original.content().expect("Failed to lock content").as_ref(),
-            cloned.content().expect("Failed to lock content").as_ref()
+            original.content().expect("Failed to lock content"),
+            cloned.content().expect("Failed to lock content")
         );
     }
 
