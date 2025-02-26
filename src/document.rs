@@ -1,4 +1,6 @@
-﻿use chrono::{DateTime, Utc};
+﻿#![allow(unused)]
+
+use chrono::{DateTime, Utc};
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
 use uuid::Uuid;
