@@ -1,14 +1,25 @@
 use crate::document::Document;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::RwLock;
 use uuid::Uuid;
+use thiserror::Error;
 
 mod document;
 mod tests;
 
+#[derive(Debug, Error)]
+pub enum ServerError {
+    #[error("Invalid UUID")]
+    InvalidUuid,
+    #[error("Couldn't lock documents")]
+    LockError,
+    #[error("Not found")]
+    NotFound,
+}
+
 struct DocumentDb {
-    docs: Mutex<HashMap<Uuid, Document>>,
+    docs: RwLock<HashMap<Uuid, Document>>,
 }
 
 impl DocumentDb {
@@ -18,14 +29,14 @@ impl DocumentDb {
         }
     }
 
-    async fn find_doc(&self, uuid_str: &str) -> Result<Document, &'static str> {
-        let parsed = Uuid::parse_str(uuid_str).map_err(|_| "Invalid UUID")?;
-        let docs = self.docs.lock().map_err(|_| "Couldn't lock documents")?;
-        docs.get(&parsed).cloned().ok_or("Not found")
+    async fn find_doc(&self, uuid_str: &str) -> Result<Document, ServerError> {
+        let parsed = Uuid::parse_str(uuid_str).map_err(|_| ServerError::InvalidUuid)?;
+        let docs = self.docs.read().map_err(|_| ServerError::LockError)?;
+        docs.get(&parsed).cloned().ok_or(ServerError::NotFound)
     }
 
-    async fn add_doc(&self, document: Document) -> Result<(), &'static str> {
-        let mut docs = self.docs.lock().map_err(|_| "Couldn't lock documents")?;
+    async fn add_doc(&self, document: Document) -> Result<(), ServerError> {
+        let mut docs = self.docs.write().map_err(|_| ServerError::LockError)?;
         docs.insert(document.id(), document);
         Ok(())
     }
@@ -58,7 +69,7 @@ async fn get_doc(server: web::Data<DocumentDb>, uuid: web::Path<String>) -> Http
                 "content": content,
             }))
         }
-        Err(e) => HttpResponse::BadRequest().json(get_error_json(e.to_owned())),
+        Err(e) => HttpResponse::BadRequest().json(get_error_json(e.to_string())),
     }
 }
 
@@ -73,21 +84,14 @@ async fn create_doc(
     server: web::Data<DocumentDb>,
     body: web::Json<CreateDocumentRequest>,
 ) -> HttpResponse {
-    let content = match &body.content {
-        Some(c) => c,
-        None => &"".to_owned(),
-    };
-
-    let name = match &body.name {
-        Some(n) => n,
-        None => &"Untitled".to_owned(),
-    };
+    let content = body.content.as_deref().unwrap_or("");
+    let name = body.name.as_deref().unwrap_or("Untitled");
 
     let doc = Document::new(name, content);
     let doc_id = doc.id();
     match server.add_doc(doc).await {
-        Ok(_) => HttpResponse::Created().json(serde_json::json!({ "id": String::from(doc_id) })),
-        Err(e) => HttpResponse::InternalServerError().json(get_error_json(e.to_owned())),
+        Ok(_) => HttpResponse::Created().json(serde_json::json!({ "id": doc_id.to_string() })),
+        Err(e) => HttpResponse::InternalServerError().json(get_error_json(e.to_string())),
     }
 }
 
@@ -133,7 +137,7 @@ async fn edit_doc(
 
             HttpResponse::Ok().json(serde_json::json!({ "name": name, "content": content }))
         }
-        Err(e) => HttpResponse::BadRequest().json(get_error_json(e.to_owned())),
+        Err(e) => HttpResponse::BadRequest().json(get_error_json(e.to_string())),
     }
 }
 
