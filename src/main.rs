@@ -1,12 +1,17 @@
 use crate::document::Document;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer};
+use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::sync::RwLock;
-use uuid::Uuid;
 use thiserror::Error;
+use uuid::Uuid;
 
 mod document;
 mod tests;
+
+lazy_static! {
+    static ref lazy_docs: RwLock<HashMap<Uuid, Document>> = HashMap::new().into();
+}
 
 #[derive(Debug, Error)]
 pub enum ServerError {
@@ -18,28 +23,16 @@ pub enum ServerError {
     NotFound,
 }
 
-struct DocumentDb {
-    docs: RwLock<HashMap<Uuid, Document>>,
+async fn find_doc(uuid_str: &str) -> Result<Document, ServerError> {
+    let parsed = Uuid::parse_str(uuid_str).map_err(|_| ServerError::InvalidUuid)?;
+    let docs = lazy_docs.read().map_err(|_| ServerError::LockError)?;
+    docs.get(&parsed).cloned().ok_or(ServerError::NotFound)
 }
 
-impl DocumentDb {
-    fn new() -> Self {
-        Self {
-            docs: HashMap::new().into(),
-        }
-    }
-
-    async fn find_doc(&self, uuid_str: &str) -> Result<Document, ServerError> {
-        let parsed = Uuid::parse_str(uuid_str).map_err(|_| ServerError::InvalidUuid)?;
-        let docs = self.docs.read().map_err(|_| ServerError::LockError)?;
-        docs.get(&parsed).cloned().ok_or(ServerError::NotFound)
-    }
-
-    async fn add_doc(&self, document: Document) -> Result<(), ServerError> {
-        let mut docs = self.docs.write().map_err(|_| ServerError::LockError)?;
-        docs.insert(document.id(), document);
-        Ok(())
-    }
+async fn add_doc(document: Document) -> Result<(), ServerError> {
+    let mut docs = lazy_docs.write().map_err(|_| ServerError::LockError)?;
+    docs.insert(document.id(), document);
+    Ok(())
 }
 
 fn get_error_json(error: String) -> serde_json::Value {
@@ -47,8 +40,8 @@ fn get_error_json(error: String) -> serde_json::Value {
 }
 
 #[get("/doc/{uuid}")]
-async fn get_doc(server: web::Data<DocumentDb>, uuid: web::Path<String>) -> HttpResponse {
-    match server.find_doc(&uuid).await {
+async fn get_doc(uuid: web::Path<String>) -> HttpResponse {
+    match find_doc(&uuid).await {
         Ok(doc) => {
             let content = match doc.content() {
                 Ok(c) => c,
@@ -81,7 +74,6 @@ struct CreateDocumentRequest {
 
 #[post("/doc")]
 async fn create_doc(
-    server: web::Data<DocumentDb>,
     body: web::Json<CreateDocumentRequest>,
 ) -> HttpResponse {
     let content = body.content.as_deref().unwrap_or("");
@@ -89,7 +81,7 @@ async fn create_doc(
 
     let doc = Document::new(name, content);
     let doc_id = doc.id();
-    match server.add_doc(doc).await {
+    match add_doc(doc).await {
         Ok(_) => HttpResponse::Created().json(serde_json::json!({ "id": doc_id.to_string() })),
         Err(e) => HttpResponse::InternalServerError().json(get_error_json(e.to_string())),
     }
@@ -103,11 +95,10 @@ struct EditDocumentRequest {
 
 #[post("/doc/{uuid}")]
 async fn edit_doc(
-    server: web::Data<DocumentDb>,
     uuid: web::Path<String>,
     body: web::Json<EditDocumentRequest>,
 ) -> HttpResponse {
-    match server.find_doc(&uuid).await {
+    match find_doc(&uuid).await {
         Ok(mut doc) => {
             if let Some(c) = &body.content {
                 if let Err(e) = doc.set_content(c) {
@@ -143,10 +134,8 @@ async fn edit_doc(
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let data = web::Data::new(DocumentDb::new());
     HttpServer::new(move || {
         App::new()
-            .app_data(data.clone())
             .service(get_doc)
             .service(create_doc)
             .service(edit_doc)
